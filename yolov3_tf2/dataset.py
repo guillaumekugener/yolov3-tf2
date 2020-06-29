@@ -1,4 +1,5 @@
 import tensorflow as tf
+import yolov3_tf2.autoaugment_utils as autoaugment
 from absl.flags import FLAGS
 
 @tf.function
@@ -75,6 +76,36 @@ def transform_images(x_train, size):
     x_train = x_train / 255
     return x_train
 
+def apply_augmentation(x, y, augmentation_name='test'):
+    image = tf.cast(x, dtype=tf.uint8)
+    bbox = y[:,:4]
+        
+    # For some reason they flip the min and max coords **facepalm**
+    # Order is xmin, ymin, xmax, ymax. So we need to flip them (and then we will flip back smh)    
+    bbox_in = tf.concat([bbox[:,1], bbox[:,0], bbox[:,3], bbox[:,2]], -1)
+    bbox_in = tf.reshape(bbox_in, (4, -1))
+    bbox_in = tf.transpose(bbox_in)
+    
+    # Apply augmentation
+    res = autoaugment.distort_image_with_autoaugment(
+        image = image,
+        bboxes = bbox_in,
+        augmentation_name=augmentation_name
+    )
+    
+    # Convert the bbox back to coordinates it should be
+    bbox_out = tf.concat([res[1][:,1], res[1][:,0], res[1][:,3], res[1][:,2]], -1)
+    bbox_out = tf.reshape(bbox_out, (4, -1))
+    bbox_out = tf.transpose(bbox_out)
+    
+    # We need to get rid of the transormations on bounding boxes that are all 0s.
+    # This resets them to all 0s
+    bbox_out = tf.math.multiply(bbox_out, tf.math.ceil(bbox))
+    
+    # We need to add the labels column back to the bounding box output
+    final_out = tf.concat([bbox_out, tf.reshape(y[:,4], (-1, 1))], axis=1)
+    return res[0], final_out
+
 
 # https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/using_your_own_dataset.md#conversion-script-outline-conversion-script-outline
 # Commented out fields are not required in our project
@@ -128,9 +159,9 @@ def load_tfrecord_dataset(file_pattern, class_file, size=416):
     return dataset.map(lambda x: parse_tfrecord(x, class_table, size))
 
 
-def load_fake_dataset():
+def load_fake_dataset(fake_file_path='./data/girl.png'):
     x_train = tf.image.decode_jpeg(
-        open('./data/girl.png', 'rb').read(), channels=3)
+        open(fake_file_path, 'rb').read(), channels=3)
     x_train = tf.expand_dims(x_train, axis=0)
 
     labels = [
