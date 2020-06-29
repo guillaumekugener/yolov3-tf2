@@ -42,6 +42,7 @@ flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
 flags.DEFINE_integer('num_classes', 80, 'number of classes in the model')
 flags.DEFINE_integer('weights_num_classes', None, 'specify num class for `weights` file if different, '
                      'useful in transfer learning with different number of classes')
+flags.DEFINE_string('augment', None,  'augmentation policy to use, if any')
 
 
 def main(_argv):
@@ -63,6 +64,9 @@ def main(_argv):
     if FLAGS.dataset:
         train_dataset = dataset.load_tfrecord_dataset(
             FLAGS.dataset, FLAGS.classes, FLAGS.size)
+
+    if FLAGS.augmentation is not None:
+        train_dataset = train_dataset.map(lambda x, y: dataset.apply_augmentation(x, y, augmentation_name='v0'))
     train_dataset = train_dataset.shuffle(buffer_size=512)
     train_dataset = train_dataset.batch(FLAGS.batch_size)
     train_dataset = train_dataset.map(lambda x, y: (
