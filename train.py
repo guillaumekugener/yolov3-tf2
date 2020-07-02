@@ -65,7 +65,7 @@ def main(_argv):
         train_dataset = dataset.load_tfrecord_dataset(
             FLAGS.dataset, FLAGS.classes, FLAGS.size)
 
-    if FLAGS.augmentation:
+    if FLAGS.augment:
         train_dataset = train_dataset.map(lambda x, y: dataset.apply_augmentation(x, y, augmentation_name='v0'))
     
     train_dataset = train_dataset.shuffle(buffer_size=512)
