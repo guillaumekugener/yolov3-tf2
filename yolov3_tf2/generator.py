@@ -89,11 +89,15 @@ class YoloCSVGenerator(keras.utils.Sequence):
             # We should apply any data augmentation right here
             # Default to using policy v0 for now
             if self.augment:
-                img_array, y_tent = apply_augmentation(
-                    x = img_array, 
-                    y = y_tent,
-                    augmentation_name='v0'
-                )
+                # Wrap this in a try catch because sometimes it gives an error
+                try:
+                    img_array, y_tent = apply_augmentation(
+                        x = img_array, 
+                        y = y_tent,
+                        augmentation_name='v0'
+                    )
+                except:
+                    print('There was an error with augmentation')
 
             if debug:
                 import matplotlib.pyplot as plt
