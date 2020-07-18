@@ -17,6 +17,7 @@ from yolov3_tf2.models import (
 )
 from yolov3_tf2.utils import freeze_all
 import yolov3_tf2.dataset as dataset
+from yolov3_tf2.generator import YoloCSVGenerator
 
 flags.DEFINE_string('dataset', '', 'path to dataset')
 flags.DEFINE_string('val_dataset', '', 'path to validation dataset')
@@ -42,6 +43,9 @@ flags.DEFINE_float('learning_rate', 1e-3, 'learning rate')
 flags.DEFINE_integer('num_classes', 80, 'number of classes in the model')
 flags.DEFINE_integer('weights_num_classes', None, 'specify num class for `weights` file if different, '
                      'useful in transfer learning with different number of classes')
+
+flags.DEFINE_boolean('csv', False,  'use a csv to build the generator')
+flags.DEFINE_string('csv_class_file', '',  'csv with classes to train on')
 flags.DEFINE_boolean('augment', False,  'use augmentation policy v0 from the Google brain paper')
 
 
@@ -61,29 +65,53 @@ def main(_argv):
         anchor_masks = yolo_anchor_masks
 
     train_dataset = dataset.load_fake_dataset()
-    if FLAGS.dataset:
-        train_dataset = dataset.load_tfrecord_dataset(
-            FLAGS.dataset, FLAGS.classes, FLAGS.size)
-
-    if FLAGS.augment:
-        train_dataset = train_dataset.map(lambda x, y: dataset.apply_augmentation(x, y, augmentation_name='v0'))
-    
-    train_dataset = train_dataset.shuffle(buffer_size=512)
-    train_dataset = train_dataset.batch(FLAGS.batch_size)
-    train_dataset = train_dataset.map(lambda x, y: (
-        dataset.transform_images(x, FLAGS.size),
-        dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
-    train_dataset = train_dataset.prefetch(
-        buffer_size=tf.data.experimental.AUTOTUNE)
-
     val_dataset = dataset.load_fake_dataset()
-    if FLAGS.val_dataset:
-        val_dataset = dataset.load_tfrecord_dataset(
-            FLAGS.val_dataset, FLAGS.classes, FLAGS.size)
-    val_dataset = val_dataset.batch(FLAGS.batch_size)
-    val_dataset = val_dataset.map(lambda x, y: (
-        dataset.transform_images(x, FLAGS.size),
-        dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
+
+    if FLAGS.csv:
+        # Use a csv generator to do the training
+        train_dataset = YoloCSVGenerator(
+            csv_data_file=FLAGS.dataset, 
+            csv_class_file=FLAGS.csv_class_file, 
+            anchors=anchors,
+            anchor_masks=anchor_masks,
+            img_size=416, 
+            shuffle=True,
+            batch_size=8,
+            yolo_max_boxes=100,
+            augment=FLAGS.augment
+        )
+
+        val_dataset = YoloCSVGenerator(
+            csv_data_file=FLAGS.val_dataset, 
+            csv_class_file=FLAGS.csv_class_file, 
+            anchors=anchors,
+            anchor_masks=anchor_masks,
+            img_size=416, 
+            shuffle=False,
+            batch_size=8,
+            yolo_max_boxes=100,
+            augment=False
+        )
+    else:
+        if FLAGS.dataset:
+            train_dataset = dataset.load_tfrecord_dataset(
+                FLAGS.dataset, FLAGS.classes, FLAGS.size)
+        
+        train_dataset = train_dataset.shuffle(buffer_size=512)
+        train_dataset = train_dataset.batch(FLAGS.batch_size)
+        train_dataset = train_dataset.map(lambda x, y: (
+            dataset.transform_images(x, FLAGS.size),
+            dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
+        train_dataset = train_dataset.prefetch(
+            buffer_size=tf.data.experimental.AUTOTUNE)
+
+        if FLAGS.val_dataset:
+            val_dataset = dataset.load_tfrecord_dataset(
+                FLAGS.val_dataset, FLAGS.classes, FLAGS.size)
+        val_dataset = val_dataset.batch(FLAGS.batch_size)
+        val_dataset = val_dataset.map(lambda x, y: (
+            dataset.transform_images(x, FLAGS.size),
+            dataset.transform_targets(y, anchors, anchor_masks, FLAGS.size)))
 
     # Configure the model for transfer learning
     if FLAGS.transfer == 'none':
